@@ -1,0 +1,25 @@
+---
+title: "A Better .docx Template for Quarto"
+author: Your Name Here^[Denison University, Granville, OH USA. Contact at mdwilliams@denison.edu.], Author Two^[University of Awsome], Author Three^[Awsome State University]
+date: "`r Sys.Date()`"
+abstract: "**Abstract**: Write something that's so abstract, that it's abstract"
+format: 
+  docx:
+    reference-doc: word_docx_new_template.docx
+    number-sections: true
+    number-depth: 3
+    fig-dpi: 500
+    fig-align: center
+execute: 
+  echo: false
+  warning: false
+  message: false
+---
+
+***Keywords***: Quarto, Word, Templates
+
+\newpage
+
+# Introduction
+
+blah....

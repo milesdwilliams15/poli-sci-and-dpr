@@ -1,0 +1,513 @@
+---
+title: "Data Viz for Faculty Attitudes toward a DPR Major for Political Science Students"
+# author: Your Name Here^[Denison University, Granville, OH USA. Contact at mdwilliams@denison.edu.], Author Two^[University of Awsome], Author Three^[Awsome State University]
+date: "`r Sys.Date()`"
+# abstract: "**Abstract**: Write something that's so abstract, that it's abstract"
+format: 
+  docx:
+    reference-doc: ../quarto_template.docx
+    number-sections: true
+    number-depth: 3
+    fig-dpi: 500
+    fig-align: center
+    fig-height: 4
+    fig-width: 6
+execute: 
+  echo: false
+  warning: false
+  message: false
+---
+
+This document contains some data visualizations and the code used to produce them. The data viz are in the first section, and the code appears after.
+
+## The Data Visualiations
+
+```{r}
+## Setup ----
+library(tidyverse)
+library(socsci)
+library(ggtext)
+library(coolorrr)
+set_theme()
+set_palette(
+  binary = c("steelblue", "gray")
+)
+library(googlesheets4)
+gs4_deauth()
+
+```
+
+
+```{r}
+## Read in data ----
+ps <- range_speedread("https://docs.google.com/spreadsheets/d/1MPEl2xX5194wsIH744Q6tvI0GhM_FSpyj4wc-wWeiQc/edit?usp=sharing")
+
+ps <- ps %>% rename_all(tolower)
+
+ps <- ps %>% filter(finished==1)
+
+```
+
+
+```{r}
+## Recodes ----
+val7 <- c("Strongly\nDisapprove", "Disapprove", 
+          "Somewhat\nDisapprove", "Neither",
+          "Somewhat\nApprove", "Approve",
+          "Strongly\nApprove")
+val5 <- c("Strongly\nDisagree", "Disagree",
+          "Neither", "Agree", "Strongly\nDisagree")
+qnam <- c("...be good for\nstudent jobs",
+          "...drive students\naway",
+          "...fix STEM's leaky\npipeline",
+          "...be better as a\nminor than major",
+          "...be good for\ncritical thinking",
+          "...idealy be tought\ninhouse")
+ps |>
+  transmute(
+    ## support for DPR (-3 lowest and +3 highest)
+    pro_dpr = 4 - q26,
+    
+    ## followups (-2 lowest and +2 highest)
+    good_jobs = 3 - q27_1,
+    drive_away = 3 - q27_2,
+    fix_leaky_pipe = 3 - q27_3,
+    better_minor = 3 - q27_5,
+    critical_thinking = 3 - q27_4,
+    inhouse = 3 - q27_6,
+    
+    ## academic position:
+    position = frcode(
+      q28 == 1 ~ "Grad Student",
+      q28 == 2 ~ "Post-doc",
+      q28 == 3 ~ "Assistant Prof",
+      q28 == 4 ~ "Associate Prof",
+      q28 == 5 ~ "Full Prof",
+      TRUE ~ "Other"
+    ),
+    public = (q29 == 1) + 0,
+    institution = frcode(
+      q30 == 1 ~ "R1",
+      q30 == 2 ~ "R2",
+      q30 == 3 ~ "R3",
+      q30 == 4 ~ "Masters Granting",
+      q30 == 5 ~ "Liberal Arts",
+      q30 == 6 ~ "Community College",
+      TRUE ~ "Other"
+    ),
+    retired = (q31 == 1) + 0,
+    gender = frcode(
+      q37 == 1 ~ "Male",
+      q37 == 2 ~ "Female",
+      q37 == 3 ~ "Non-binary"
+    ),
+    race = frcode(
+      q38 == 1 ~ "White",
+      q38 == 2 ~ "Black",
+      q38 == 3 ~ "Latino/a",
+      q38 == 4 ~ "Asian",
+      q38 == 5 ~ "Other"
+    ),
+    age = 2024 - q39_4
+  ) -> newps
+```
+
+
+
+```{r}
+#| fig-height: 5
+#| fig-width: 6
+
+## Data viz ---- 
+
+### Figure 1 ----
+
+## Show how support for DPR predicts other
+## attitudes about the benefits of DPR for
+## students
+
+newps |>
+  pivot_longer(
+    good_jobs:inhouse
+  ) |>
+  mutate(
+    name = rep(
+      qnam, len = n()
+    )
+  ) |>
+  ggplot() +
+  aes(
+    x = pro_dpr,
+    y = value
+  ) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ poly(x, 2),
+    color = "steelblue"
+  ) +
+  facet_wrap(~ name) +
+  geom_text(
+    data = . %>% 
+      filter(name == "...drive students\naway"),
+    aes(
+      x = 0.25, 
+      y = -1.2, 
+      label = sprintf("Approval of DPR \U1F846")
+    )
+  ) +
+  geom_text(
+    data = . %>% 
+      filter(name == "...drive students\naway"),
+    aes(
+      x = -2.5, 
+      y = 0, 
+      label = sprintf("Agree \U1F846")
+    ),
+    angle = 90
+  ) +
+  labs(
+    title = paste0(
+      "Attitudes toward DPR predict agreement\n",
+      "about the value of DPR for students\n",
+      "along several dimensions"
+    ),
+    subtitle = paste0(
+      "Respondent agreement with the idea that DPR would...\n"
+    ),
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    axis.text.y = element_text(
+      angle = 0
+    )
+  )
+
+```
+
+```{r}
+### Figure 2 ----
+
+# Show mean support for DPR by position:
+
+newps |>
+  group_by(position) |>
+  mean_ci(pro_dpr, ci = .83) |>
+  mutate(
+    upper = ifelse(
+      upper > 2, 2, upper
+    )
+  ) |>
+  ggplot() +
+  aes(
+    x = mean,
+    xmin = lower,
+    xmax = upper,
+    y = position
+  ) +
+  geom_pointrange(
+    color = "steelblue"
+  ) +
+  geom_text(
+    data = . %>% filter(position == "Other"),
+    aes(label = "Mean with 83% CI"),
+    vjust = -.5,
+    color = "steelblue",
+    fontface = "bold"
+  ) +
+  geom_vline(
+    xintercept = 0,
+    lty = 2
+  ) +
+  scale_x_continuous(
+    breaks = c(-2, 0, 2),
+    labels = 
+      c("Strongly\nDisapprove", "Neutral", "Strongly\nApprove"),
+    limits = c(-2, 2)
+  ) +
+  annotate(
+    "text",
+    x = 1,
+    y = .75,
+    label = sprintf("Average Approval \U1F80A")
+  ) +
+  labs(
+    title = paste0(
+      "Support for DPR by academic position"
+    ),
+    subtitle = paste0(
+      "More junior faculty are more supportive of DPR\n"
+    ),
+    x = NULL,
+    y = NULL,
+    caption = paste0(
+      "<p> </p>",
+      "<p><i>Note:</i> 83% CIs have 95% coverage for a test of nonoverlap.</p>"
+    )
+  ) +
+  theme(
+    plot.caption = element_markdown()
+  )
+```
+
+```{r}
+
+### Figure 3 ---- 
+
+# Show support for DPR by institution:
+
+newps |>
+  group_by(institution) |>
+  mean_ci(pro_dpr, ci = .83) |>
+  ggplot() +
+  aes(
+    x = mean,
+    xmin = lower,
+    xmax = upper,
+    y = institution
+  ) +
+  geom_pointrange(
+    color = "steelblue"
+  ) +
+  geom_text(
+    data = . %>% filter(institution == "Other"),
+    aes(label = "Mean with 83% CI"),
+    vjust = -.5,
+    color = "steelblue",
+    fontface = "bold"
+  ) +
+  geom_vline(
+    xintercept = 0,
+    lty = 2
+  ) +
+  scale_x_continuous(
+    breaks = c(-2, 0, 2),
+    labels = 
+      c("Strongly\nDisapprove", "Neutral", "Strongly\nApprove"),
+    limits = c(-2, 2)
+  ) +
+  annotate(
+    "text",
+    x = 1,
+    y = .75,
+    label = sprintf("Average Approval \U1F80A")
+  ) +
+  labs(
+    title = paste0(
+      "Support for DPR by academic institution"
+    ),
+    subtitle = paste0(
+      "Faculty at research institutions are more supportive of DPR\n"
+    ),
+    x = NULL,
+    y = NULL,
+    caption = paste0(
+      "<p> </p>",
+      "<p><i>Note:</i> 83% CIs have 95% coverage for a test of nonoverlap.</p>"
+    )
+  ) +
+  theme(
+    plot.caption = element_markdown()
+  )
+```
+
+```{r}
+
+### Figure 4 ----
+
+# Show support for DPR by gender:
+
+newps |>
+  group_by(gender) |>
+  mean_ci(pro_dpr, ci = .83) |>
+  drop_na() |>
+  ggplot() +
+  aes(
+    x = mean,
+    xmin = lower,
+    xmax = upper,
+    y = gender
+  ) +
+  geom_pointrange(
+    color = "steelblue"
+  ) +
+  geom_text(
+    data = . %>% filter(gender == "Non-binary"),
+    aes(label = "Mean with 83% CI"),
+    vjust = -.5,
+    color = "steelblue",
+    fontface = "bold"
+  ) +
+  geom_vline(
+    xintercept = 0,
+    lty = 2
+  ) +
+  scale_x_continuous(
+    breaks = c(-2, 0, 2),
+    labels = 
+      c("Strongly\nDisapprove", "Neutral", "Strongly\nApprove"),
+    limits = c(-2, 2)
+  ) +
+  annotate(
+    "text",
+    x = 1,
+    y = .75,
+    label = sprintf("Average Approval \U1F80A")
+  ) +
+  labs(
+    title = paste0(
+      "Support for DPR by gender"
+    ),
+    subtitle = paste0(
+      "Male faculty tend to be more supportive of DPR\n"
+    ),
+    x = NULL,
+    y = NULL,
+    caption = paste0(
+      "<p> </p>",
+      "<p><i>Note:</i> 83% CIs have 95% coverage for a test of nonoverlap.</p>"
+    )
+  ) +
+  theme(
+    plot.caption = element_markdown()
+  )
+```
+
+```{r}
+
+### Figure 5 ----
+
+# Show support for DPR by race:
+
+newps |>
+  group_by(race) |>
+  mean_ci(pro_dpr, ci = .83) |>
+  mutate(
+    upper = ifelse(
+      upper > 2, 2, upper
+    )
+  ) |>
+  drop_na() |>
+  ggplot() +
+  aes(
+    x = mean,
+    xmin = lower,
+    xmax = upper,
+    y = race
+  ) +
+  geom_pointrange(
+    color = "steelblue"
+  ) +
+  geom_text(
+    data = . %>% filter(race == "Other"),
+    aes(label = "Mean with 83% CI"),
+    vjust = -.5,
+    color = "steelblue",
+    fontface = "bold"
+  ) +
+  geom_vline(
+    xintercept = 0,
+    lty = 2
+  ) +
+  scale_x_continuous(
+    breaks = c(-2, 0, 2),
+    labels = 
+      c("Strongly\nDisapprove", "Neutral", "Strongly\nApprove"),
+    limits = c(-2, 2)
+  ) +
+  annotate(
+    "text",
+    x = 1,
+    y = .75,
+    label = sprintf("Average Approval \U1F80A")
+  ) +
+  labs(
+    title = paste0(
+      "Support for DPR by race"
+    ),
+    subtitle = paste0(
+      "Not much difference in support for DPR based on race\n"
+    ),
+    x = NULL,
+    y = NULL,
+    caption = paste0(
+      "<p> </p>",
+      "<p><i>Note:</i> 83% CIs have 95% coverage for a test of nonoverlap.</p>"
+    )
+  ) +
+  theme(
+    plot.caption = element_markdown()
+  )
+```
+
+```{r}
+
+### Figure 6 ----
+
+# Show support for DPR by age:
+
+newps |>
+  ggplot() +
+  aes(
+    x = age,
+    y = pro_dpr
+  ) +
+  geom_smooth(
+    color = "steelblue"
+  ) +
+  geom_rug(
+    color = "red3",
+    sides = "b",
+    alpha = .1,
+    size = 1.5
+  ) +
+  geom_hline(
+    yintercept = 0,
+    lty = 2
+  ) +
+  scale_y_continuous(
+    breaks = c(-2, 0, 2),
+    labels = c("Strongly\nDisapprove", "Neutral", "Strongly\nApprove"),
+    limits = c(-2, 2.2)
+  ) +
+  annotate(
+    "text",
+    x = 35,
+    y = -1.5,
+    label = sprintf("Faculty Age \U1F80A")
+  ) +
+  annotate(
+    "text",
+    x = 70,
+    y = -1.75,
+    label = sprintf("\U2BA6 Frequency of Faculty Ages"),
+    color = "red3"
+  ) +
+  labs(
+    title = paste0(
+      "Support for DPR by age"
+    ),
+    subtitle = paste0(
+      "Support for DPR is high regardless of age but it does tapper downward\n",
+      "among older faculty\n"
+    ),
+    x = NULL,
+    y = NULL,
+    caption = paste0(
+      "<p> </p>",
+      "<p><i>Note:</i> 95% CI is shown with gray band.</p>"
+    )
+  ) +
+  theme(
+    plot.caption = element_markdown()
+  )
+
+## END OF CODE
+```
+
+\newpage
+
+## The Code
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
